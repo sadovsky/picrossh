@@ -1,7 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use crate::puzzle::{CellState, Puzzle};
+use crate::save::{load_best_times, save_best_times};
 
 #[derive(PartialEq, Eq)]
 pub enum AppState {
@@ -32,6 +33,7 @@ pub struct App {
     pub menu_items: Vec<MenuItem>,
     pub paint_mode: bool,
     pub paint_value: CellState,
+    pub best_times: HashMap<String, u64>, // puzzle name → best time in ms
 }
 
 fn build_menu_items(puzzles: &[Puzzle]) -> Vec<MenuItem> {
@@ -57,6 +59,14 @@ impl App {
         let puzzles = Puzzle::presets();
         let menu_items = build_menu_items(&puzzles);
         let initial_selection = first_puzzle_entry(&menu_items);
+        let best_times = load_best_times();
+        // Mark puzzles that have a saved best time as already solved
+        let solved_puzzles: HashSet<usize> = puzzles
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| best_times.contains_key(p.name))
+            .map(|(i, _)| i)
+            .collect();
         App {
             state: AppState::Splash,
             puzzles,
@@ -67,10 +77,11 @@ impl App {
             start_time: None,
             elapsed: Duration::ZERO,
             menu_selection: initial_selection,
-            solved_puzzles: HashSet::new(),
+            solved_puzzles,
             menu_items,
             paint_mode: false,
             paint_value: CellState::Empty,
+            best_times,
         }
     }
 
@@ -86,11 +97,16 @@ impl App {
         self.state = AppState::Playing;
     }
 
-    /// Space: always fills. Enters fill-paint mode.
+    /// Space: if not painting, fills current cell and enters paint mode.
+    /// If already in paint mode, stops painting (acts as release).
     pub fn fill_cell(&mut self) {
-        self.board[self.cursor_row][self.cursor_col] = CellState::Filled;
-        self.paint_value = CellState::Filled;
-        self.paint_mode = true;
+        if self.paint_mode {
+            self.paint_mode = false;
+        } else {
+            self.board[self.cursor_row][self.cursor_col] = CellState::Filled;
+            self.paint_value = CellState::Filled;
+            self.paint_mode = true;
+        }
     }
 
     /// 'e': always erases to Empty. Enters erase-paint mode.
@@ -140,6 +156,17 @@ impl App {
             self.elapsed = start.elapsed();
         }
         self.solved_puzzles.insert(self.current_puzzle_index);
+        // Persist best time for this puzzle
+        let name = self.puzzles[self.current_puzzle_index].name.to_string();
+        let ms = self.elapsed.as_millis() as u64;
+        let is_best = self
+            .best_times
+            .get(&name)
+            .map_or(true, |&prev| ms < prev);
+        if is_best {
+            self.best_times.insert(name, ms);
+            save_best_times(&self.best_times);
+        }
         self.state = AppState::Solved;
     }
 
@@ -150,6 +177,10 @@ impl App {
 
     pub fn live_elapsed(&self) -> Duration {
         self.start_time.map_or(Duration::ZERO, |s| s.elapsed())
+    }
+
+    pub fn best_time_ms(&self, index: usize) -> Option<u64> {
+        self.best_times.get(self.puzzles[index].name).copied()
     }
 
     pub fn puzzle_display_name(&self, index: usize) -> String {

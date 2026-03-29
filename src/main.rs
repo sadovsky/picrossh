@@ -10,6 +10,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 
 mod app;
 mod puzzle;
+mod save;
 mod ui;
 
 use app::{App, AppState, MenuItem};

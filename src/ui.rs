@@ -22,6 +22,13 @@ const REVEAL_PALETTE: [Color; 8] = [
     Color::Green,
 ];
 
+fn fmt_ms(ms: u64) -> String {
+    let secs = ms / 1000;
+    let mins = secs / 60;
+    let s = secs % 60;
+    format!("{}:{:02}", mins, s)
+}
+
 pub fn render(f: &mut Frame, app: &App) {
     match app.state {
         AppState::Splash => render_splash(f),
@@ -49,9 +56,9 @@ fn render_splash(f: &mut Frame) {
         "          a terminal nonogram puzzle game",
         "",
         "",
-        "              ┌───────────────────────────┐",
+        "              ┌────────────────────────────┐",
         "              │   Press any key to start   │",
-        "              └───────────────────────────┘",
+        "              └────────────────────────────┘",
         "",
     ];
 
@@ -162,14 +169,21 @@ fn render_menu(f: &mut Frame, app: &App) {
                         Style::default().fg(Color::DarkGray),
                     )
                 };
-                ListItem::new(Line::from(vec![
+                let mut spans = vec![
                     Span::raw(prefix),
                     Span::styled(
                         format!("{:<width$}", name, width = name_col_w),
                         name_style,
                     ),
                     Span::styled(size_str, size_style),
-                ]))
+                ];
+                if let Some(ms) = app.best_time_ms(*idx) {
+                    spans.push(Span::styled(
+                        format!("  {}", fmt_ms(ms)),
+                        Style::default().fg(Color::Yellow),
+                    ));
+                }
+                ListItem::new(Line::from(spans))
             }
         })
         .collect();
