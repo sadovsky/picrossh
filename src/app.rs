@@ -30,6 +30,8 @@ pub struct App {
     pub menu_selection: usize,
     pub solved_puzzles: HashSet<usize>,
     pub menu_items: Vec<MenuItem>,
+    pub paint_mode: bool,
+    pub paint_value: CellState,
 }
 
 fn build_menu_items(puzzles: &[Puzzle]) -> Vec<MenuItem> {
@@ -67,6 +69,8 @@ impl App {
             menu_selection: initial_selection,
             solved_puzzles: HashSet::new(),
             menu_items,
+            paint_mode: false,
+            paint_value: CellState::Empty,
         }
     }
 
@@ -78,12 +82,28 @@ impl App {
         self.cursor_col = 0;
         self.start_time = Some(Instant::now());
         self.elapsed = Duration::ZERO;
+        self.paint_mode = false;
         self.state = AppState::Playing;
     }
 
     pub fn toggle_fill(&mut self) {
         let cell = &mut self.board[self.cursor_row][self.cursor_col];
         *cell = if *cell == CellState::Filled { CellState::Empty } else { CellState::Filled };
+        // Enter paint mode, painting whatever state we just set
+        self.paint_value = self.board[self.cursor_row][self.cursor_col];
+        self.paint_mode = true;
+    }
+
+    pub fn stop_paint(&mut self) {
+        self.paint_mode = false;
+    }
+
+    /// Move cursor and, if in paint mode, apply paint to the new cell.
+    pub fn move_and_paint(&mut self, dr: i32, dc: i32) {
+        self.move_cursor(dr, dc);
+        if self.paint_mode {
+            self.board[self.cursor_row][self.cursor_col] = self.paint_value;
+        }
     }
 
     pub fn toggle_cross(&mut self) {

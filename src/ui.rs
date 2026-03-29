@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
 use std::time::Duration;
@@ -10,15 +10,24 @@ use std::time::Duration;
 use crate::app::{App, AppState, MenuItem};
 use crate::puzzle::CellState;
 
+// Color palette for the solved reveal (cycles by diagonal)
+const REVEAL_PALETTE: [Color; 8] = [
+    Color::Cyan,
+    Color::LightCyan,
+    Color::LightBlue,
+    Color::Blue,
+    Color::LightMagenta,
+    Color::Magenta,
+    Color::LightGreen,
+    Color::Green,
+];
+
 pub fn render(f: &mut Frame, app: &App) {
     match app.state {
         AppState::Splash => render_splash(f),
         AppState::Menu => render_menu(f, app),
         AppState::Playing => render_playing(f, app),
-        AppState::Solved => {
-            render_playing(f, app);
-            render_solved_overlay(f, app);
-        }
+        AppState::Solved => render_solved(f, app),
         AppState::Quit => {}
     }
 }
@@ -72,11 +81,7 @@ fn render_splash(f: &mut Frame) {
         .collect();
 
     let art_height = art_lines.len() as u16;
-    let art_width = art
-        .iter()
-        .map(|l| l.chars().count())
-        .max()
-        .unwrap_or(60) as u16;
+    let art_width = art.iter().map(|l| l.chars().count()).max().unwrap_or(60) as u16;
 
     let v_offset = area.top() + area.height.saturating_sub(art_height) / 2;
     let h_offset = area.left() + area.width.saturating_sub(art_width) / 2;
@@ -166,10 +171,9 @@ fn render_menu(f: &mut Frame, app: &App) {
     let list_area = centered_rect(50, 80, chunks[1]);
     f.render_stateful_widget(list, list_area, &mut state);
 
-    let footer =
-        Paragraph::new("↑↓ / jk = navigate   Enter / Space = play   q = quit")
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::DarkGray));
+    let footer = Paragraph::new("↑↓ / jk = navigate   Enter / Space = play   q = quit")
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::DarkGray));
     f.render_widget(footer, chunks[2]);
 }
 
@@ -187,7 +191,7 @@ fn render_playing(f: &mut Frame, app: &App) {
         ])
         .split(area);
 
-    let elapsed = if app.state == AppState::Solved { app.elapsed } else { app.live_elapsed() };
+    let elapsed = app.live_elapsed();
     let display_name = app.puzzle_display_name(app.current_puzzle_index);
 
     let header_text = format!("PICROSSH   │   {}   │   {}", display_name, format_time(elapsed));
@@ -201,17 +205,114 @@ fn render_playing(f: &mut Frame, app: &App) {
         );
     f.render_widget(header, chunks[0]);
 
-    let footer_text = if app.state == AppState::Solved {
-        "SOLVED!   Esc = menu   n = next   q = quit"
-    } else {
-        "Space = fill   x = cross   r = reset   hjkl / arrows = move   g/G = top/bot   Esc = menu"
-    };
+    let paint_indicator = if app.paint_mode { "  ✏ PAINT" } else { "" };
+    let footer_text = format!(
+        "Space=fill  x=cross  r=reset  hjkl/arrows=move  HJKL=×5  g/G=top/bot  0/$=row±  Esc=menu{}",
+        paint_indicator
+    );
     let footer = Paragraph::new(footer_text)
         .alignment(Alignment::Center)
         .style(Style::default().fg(Color::DarkGray));
     f.render_widget(footer, chunks[2]);
 
     render_grid(f, app, chunks[1]);
+}
+
+// ── Solved reveal ─────────────────────────────────────────────────────────────
+
+fn render_solved(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let puzzle = &app.puzzles[app.current_puzzle_index];
+
+    // Header
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(3),
+        ])
+        .split(area);
+
+    let display_name = puzzle.name;
+    let header_text = format!(
+        "PICROSSH   │   {}   │   {}",
+        display_name,
+        format_time(app.elapsed)
+    );
+    let header = Paragraph::new(header_text)
+        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .border_style(Style::default().fg(Color::Blue)),
+        );
+    f.render_widget(header, chunks[0]);
+
+    // Banner at the bottom
+    let banner = Paragraph::new(format!(
+        " ✦  SOLVED!  ✦   {}   │   {}   │   n = next puzzle   Esc = menu   q = quit",
+        display_name,
+        format_time(app.elapsed),
+    ))
+    .style(Style::default().fg(Color::Black).bg(Color::LightGreen).add_modifier(Modifier::BOLD))
+    .alignment(Alignment::Center)
+    .block(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+    );
+    f.render_widget(banner, chunks[2]);
+
+    // Reveal: show just the pixel art, no clues, no grid lines
+    render_reveal(f, app, chunks[1]);
+}
+
+fn render_reveal(f: &mut Frame, app: &App, area: Rect) {
+    let puzzle = &app.puzzles[app.current_puzzle_index];
+
+    // Each cell is 2 wide, no separators between cells in reveal mode
+    let cell_w: usize = 2;
+    let grid_w = puzzle.cols * cell_w;
+    let grid_h = puzzle.rows;
+
+    if (area.width as usize) < grid_w || (area.height as usize) < grid_h {
+        return;
+    }
+
+    let v_offset = area.top() + area.height.saturating_sub(grid_h as u16) / 2;
+    let h_offset = area.left() + area.width.saturating_sub(grid_w as u16) / 2;
+
+    let mut lines: Vec<Line> = Vec::new();
+    for r in 0..puzzle.rows {
+        let mut spans = Vec::new();
+        for c in 0..puzzle.cols {
+            if puzzle.solution[r][c] {
+                let color = REVEAL_PALETTE[(r + c) % REVEAL_PALETTE.len()];
+                // Use gradient shading: cells near edges use lighter blocks
+                let dist_from_edge = (r.min(puzzle.rows - 1 - r)).min(c.min(puzzle.cols - 1 - c));
+                let block_char = match dist_from_edge {
+                    0 => "░░",
+                    1 => "▒▒",
+                    2 => "▓▓",
+                    _ => "██",
+                };
+                spans.push(Span::styled(block_char, Style::default().fg(color)));
+            } else {
+                spans.push(Span::raw("  "));
+            }
+        }
+        lines.push(Line::from(spans));
+    }
+
+    let reveal_area = Rect {
+        x: h_offset,
+        y: v_offset,
+        width: (grid_w as u16).min(area.width),
+        height: (grid_h as u16).min(area.height),
+    };
+    f.render_widget(Paragraph::new(Text::from(lines)), reveal_area);
 }
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
@@ -248,13 +349,12 @@ fn render_grid(f: &mut Frame, app: &App, area: Rect) {
 
     let col_clue_height = puzzle.col_clues.iter().map(|c| c.len()).max().unwrap_or(1);
 
-    // Grid interior: cols*2 wide with │ separators between = cols*3-1, plus │ on each side = cols*3+1
-    // Total line: row_clue_width + 1 (space) + cols*3+1
-    let grid_inner_width = puzzle.cols * 3 - 1; // cells + separators between
-    let needed_width = row_clue_width + 2 + grid_inner_width + 2; // margin + "│" + cells + "│"
-    // Height: col clue rows + separator + top border + rows + separator rows + bottom border
-    // = col_clue_height + 1 + 1 + rows + (rows-1) + 1 = col_clue_height + rows*2 + 2
-    let needed_height = col_clue_height + 1 + 1 + puzzle.rows * 2;
+    // Each cell is 2 chars; between cells: │ (1 char); plus │ on each side → total cols*3+1
+    // Row: row_clue_width + " " + │ + cells = row_clue_width + 1 + cols*3 + 1 = row_clue_width + cols*3 + 2
+    let needed_width = row_clue_width + puzzle.cols * 3 + 2;
+    // Height: col clue rows + separator + top border + data rows + separator rows + bottom border
+    // = col_clue_height + 1 + 1 + rows*2 - 1 + 1 = col_clue_height + rows*2 + 2
+    let needed_height = col_clue_height + puzzle.rows * 2 + 2;
 
     if (area.width as usize) < needed_width || (area.height as usize) < needed_height {
         let msg = Paragraph::new("Terminal too small — please resize")
@@ -266,15 +366,17 @@ fn render_grid(f: &mut Frame, app: &App, area: Rect) {
 
     let border_style = Style::default().fg(Color::Blue);
     let sep_style = Style::default().fg(Color::DarkGray);
-    let pad = " ".repeat(row_clue_width + 1); // aligns col clue area with grid
+    // pad aligns col clue area: row_clue_width spaces + 1 space (to sit above " │" prefix)
+    let pad = " ".repeat(row_clue_width + 1);
 
     let mut lines: Vec<Line> = Vec::new();
 
     // Column clue rows
     for d in 0..col_clue_height {
         let mut spans: Vec<Span> = Vec::new();
-        spans.push(Span::raw(pad.clone()));
-        spans.push(Span::raw(" ")); // aligns with "│"
+        spans.push(Span::raw(pad.clone())); // row_clue_width + 1 spaces
+        spans.push(Span::raw(" "));         // 1 more: total row_clue_width+2 before first clue,
+                                             // which aligns with row_clue_width + " " + "│" in grid rows
         for c in 0..puzzle.cols {
             let clues = &puzzle.col_clues[c];
             let offset = col_clue_height - clues.len();
@@ -294,16 +396,17 @@ fn render_grid(f: &mut Frame, app: &App, area: Rect) {
             };
             spans.push(Span::styled(cell_str, clue_style));
             if c + 1 < puzzle.cols {
-                spans.push(Span::raw(" "));
+                spans.push(Span::styled("│", sep_style));
             }
         }
         lines.push(Line::from(spans));
     }
 
-    // Separator between clues and grid
+    // Separator between col clues and top border
+    // "─┬" puts ─ at row_clue_width, ┬ at row_clue_width+1, aligned with grid's left │
     {
         let mut spans = vec![Span::raw(" ".repeat(row_clue_width))];
-        spans.push(Span::styled(" ─┬", sep_style));
+        spans.push(Span::styled("─┬", sep_style));
         for c in 0..puzzle.cols {
             spans.push(Span::styled("──", sep_style));
             if c + 1 < puzzle.cols {
@@ -339,8 +442,8 @@ fn render_grid(f: &mut Frame, app: &App, area: Rect) {
                 .map(|n| n.to_string())
                 .collect::<Vec<_>>()
                 .join(" ");
-            let row_satisfied = !app.board.is_empty()
-                && clue_satisfied(&app.board[r], &puzzle.row_clues[r]);
+            let row_satisfied =
+                !app.board.is_empty() && clue_satisfied(&app.board[r], &puzzle.row_clues[r]);
             let clue_style = if row_satisfied {
                 Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
             } else {
@@ -359,14 +462,18 @@ fn render_grid(f: &mut Frame, app: &App, area: Rect) {
 
                 let (text, style) = match (cell, is_cursor) {
                     (CellState::Empty, false) => ("  ", Style::default()),
-                    (CellState::Empty, true) => ("  ", Style::default().bg(Color::DarkGray)),
+                    (CellState::Empty, true) => {
+                        ("  ", Style::default().bg(Color::Yellow).fg(Color::Black))
+                    }
                     (CellState::Filled, false) => ("██", Style::default().fg(Color::Cyan)),
                     (CellState::Filled, true) => {
                         ("██", Style::default().fg(Color::White).bg(Color::Cyan))
                     }
-                    (CellState::Crossed, false) => (" X", Style::default().fg(Color::DarkGray)),
+                    (CellState::Crossed, false) => {
+                        ("╳╳", Style::default().fg(Color::DarkGray))
+                    }
                     (CellState::Crossed, true) => {
-                        (" X", Style::default().fg(Color::White).bg(Color::DarkGray))
+                        ("╳╳", Style::default().fg(Color::White).bg(Color::DarkGray))
                     }
                 };
 
@@ -422,43 +529,6 @@ fn render_grid(f: &mut Frame, app: &App, area: Rect) {
     };
 
     f.render_widget(Paragraph::new(Text::from(lines)), grid_area);
-}
-
-// ── Solved overlay ────────────────────────────────────────────────────────────
-
-fn render_solved_overlay(f: &mut Frame, app: &App) {
-    let area = f.area();
-    let overlay = centered_rect(40, 40, area);
-
-    let puzzle_name = &app.puzzles[app.current_puzzle_index].name;
-    let content = format!(
-        "\n  ✦  SOLVED!  ✦\n\n  {}\n\n  Time: {}\n",
-        puzzle_name,
-        format_time(app.elapsed)
-    );
-    let block = Paragraph::new(content)
-        .style(Style::default().fg(Color::Black).bg(Color::LightGreen))
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(
-                    Style::default()
-                        .fg(Color::Green)
-                        .add_modifier(Modifier::BOLD),
-                )
-                .style(Style::default().fg(Color::Black).bg(Color::LightGreen))
-                .title(Span::styled(
-                    " Congratulations! ",
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::LightGreen)
-                        .add_modifier(Modifier::BOLD),
-                )),
-        );
-
-    f.render_widget(Clear, overlay);
-    f.render_widget(block, overlay);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

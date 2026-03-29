@@ -26,6 +26,9 @@ cargo run
 # Build release binary
 cargo build --release
 ./target/release/picrossh
+
+# Install to ~/.cargo/bin (makes `picrossh` available system-wide)
+cargo install --path . --bin picrossh
 ```
 
 ## Controls
