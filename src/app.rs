@@ -1,13 +1,21 @@
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use crate::puzzle::{CellState, Puzzle};
 
 #[derive(PartialEq, Eq)]
 pub enum AppState {
+    Splash,
     Menu,
     Playing,
     Solved,
     Quit,
+}
+
+#[derive(Clone)]
+pub enum MenuItem {
+    Header(String),
+    PuzzleEntry(usize),
 }
 
 pub struct App {
@@ -20,20 +28,45 @@ pub struct App {
     pub start_time: Option<Instant>,
     pub elapsed: Duration,
     pub menu_selection: usize,
+    pub solved_puzzles: HashSet<usize>,
+    pub menu_items: Vec<MenuItem>,
+}
+
+fn build_menu_items(puzzles: &[Puzzle]) -> Vec<MenuItem> {
+    let mut items = vec![];
+    let mut last_size: Option<(usize, usize)> = None;
+    for (i, p) in puzzles.iter().enumerate() {
+        let size = (p.rows, p.cols);
+        if Some(size) != last_size {
+            items.push(MenuItem::Header(format!("── {}×{} ──", p.rows, p.cols)));
+            last_size = Some(size);
+        }
+        items.push(MenuItem::PuzzleEntry(i));
+    }
+    items
+}
+
+fn first_puzzle_entry(items: &[MenuItem]) -> usize {
+    items.iter().position(|item| matches!(item, MenuItem::PuzzleEntry(_))).unwrap_or(0)
 }
 
 impl App {
     pub fn new() -> Self {
+        let puzzles = Puzzle::presets();
+        let menu_items = build_menu_items(&puzzles);
+        let initial_selection = first_puzzle_entry(&menu_items);
         App {
-            state: AppState::Menu,
-            puzzles: Puzzle::presets(),
+            state: AppState::Splash,
+            puzzles,
             current_puzzle_index: 0,
             board: vec![],
             cursor_row: 0,
             cursor_col: 0,
             start_time: None,
             elapsed: Duration::ZERO,
-            menu_selection: 0,
+            menu_selection: initial_selection,
+            solved_puzzles: HashSet::new(),
+            menu_items,
         }
     }
 
@@ -80,6 +113,7 @@ impl App {
         if let Some(start) = self.start_time {
             self.elapsed = start.elapsed();
         }
+        self.solved_puzzles.insert(self.current_puzzle_index);
         self.state = AppState::Solved;
     }
 
@@ -92,15 +126,39 @@ impl App {
         self.start_time.map_or(Duration::ZERO, |s| s.elapsed())
     }
 
+    pub fn puzzle_display_name(&self, index: usize) -> String {
+        if self.solved_puzzles.contains(&index) {
+            self.puzzles[index].name.to_string()
+        } else {
+            format!("Puzzle {}", index + 1)
+        }
+    }
+
     pub fn menu_up(&mut self) {
-        if self.menu_selection > 0 {
-            self.menu_selection -= 1;
+        if self.menu_selection == 0 {
+            return;
+        }
+        let mut prev = self.menu_selection - 1;
+        loop {
+            if matches!(self.menu_items[prev], MenuItem::PuzzleEntry(_)) {
+                self.menu_selection = prev;
+                return;
+            }
+            if prev == 0 {
+                return;
+            }
+            prev -= 1;
         }
     }
 
     pub fn menu_down(&mut self) {
-        if self.menu_selection + 1 < self.puzzles.len() {
-            self.menu_selection += 1;
+        let mut next = self.menu_selection + 1;
+        while next < self.menu_items.len() {
+            if matches!(self.menu_items[next], MenuItem::PuzzleEntry(_)) {
+                self.menu_selection = next;
+                return;
+            }
+            next += 1;
         }
     }
 

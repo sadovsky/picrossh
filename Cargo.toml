@@ -3,6 +3,10 @@ name = "picrossh"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "export_non"
+path = "src/bin/export_non.rs"
+
 [dependencies]
 ratatui = "0.29"
 crossterm = "0.28"

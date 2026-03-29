@@ -1,0 +1,15 @@
+title Hourglass
+width 5
+height 5
+rows
+5
+1,1
+1
+1,1
+5
+columns
+1,1
+2,2
+1,1,1
+2,2
+1,1
