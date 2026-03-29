@@ -86,11 +86,17 @@ impl App {
         self.state = AppState::Playing;
     }
 
-    pub fn toggle_fill(&mut self) {
-        let cell = &mut self.board[self.cursor_row][self.cursor_col];
-        *cell = if *cell == CellState::Filled { CellState::Empty } else { CellState::Filled };
-        // Enter paint mode, painting whatever state we just set
-        self.paint_value = self.board[self.cursor_row][self.cursor_col];
+    /// Space: always fills. Enters fill-paint mode.
+    pub fn fill_cell(&mut self) {
+        self.board[self.cursor_row][self.cursor_col] = CellState::Filled;
+        self.paint_value = CellState::Filled;
+        self.paint_mode = true;
+    }
+
+    /// 'e': always erases to Empty. Enters erase-paint mode.
+    pub fn erase_cell(&mut self) {
+        self.board[self.cursor_row][self.cursor_col] = CellState::Empty;
+        self.paint_value = CellState::Empty;
         self.paint_mode = true;
     }
 

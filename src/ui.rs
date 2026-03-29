@@ -49,9 +49,9 @@ fn render_splash(f: &mut Frame) {
         "          a terminal nonogram puzzle game",
         "",
         "",
-        "              ┌─────────────────────────┐",
-        "              │   Press any key to start  │",
-        "              └─────────────────────────┘",
+        "              ┌───────────────────────────┐",
+        "              │   Press any key to start   │",
+        "              └───────────────────────────┘",
         "",
     ];
 
@@ -120,6 +120,22 @@ fn render_menu(f: &mut Frame, app: &App) {
         );
     f.render_widget(header, chunks[0]);
 
+    // Determine column width for name so sizes line up in a second column.
+    // Use max of all display names (hidden or revealed) plus a small margin.
+    let name_col_w = app
+        .menu_items
+        .iter()
+        .filter_map(|item| {
+            if let MenuItem::PuzzleEntry(idx) = item {
+                Some(app.puzzle_display_name(*idx).chars().count())
+            } else {
+                None
+            }
+        })
+        .max()
+        .unwrap_or(8)
+        + 2; // a little breathing room
+
     let items: Vec<ListItem> = app
         .menu_items
         .iter()
@@ -132,17 +148,28 @@ fn render_menu(f: &mut Frame, app: &App) {
                 let p = &app.puzzles[*idx];
                 let solved = app.solved_puzzles.contains(idx);
                 let name = app.puzzle_display_name(*idx);
-                let label = if solved {
-                    format!("  ✓ {} ({}×{})", name, p.rows, p.cols)
+                let size_str = format!("{}×{}", p.rows, p.cols);
+                let (prefix, name_style, size_style) = if solved {
+                    (
+                        "  ✓ ",
+                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                        Style::default().fg(Color::DarkGray),
+                    )
                 } else {
-                    format!("    {} ({}×{})", name, p.rows, p.cols)
+                    (
+                        "    ",
+                        Style::default().fg(Color::White),
+                        Style::default().fg(Color::DarkGray),
+                    )
                 };
-                let style = if solved {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default().fg(Color::White)
-                };
-                ListItem::new(Line::from(Span::styled(label, style)))
+                ListItem::new(Line::from(vec![
+                    Span::raw(prefix),
+                    Span::styled(
+                        format!("{:<width$}", name, width = name_col_w),
+                        name_style,
+                    ),
+                    Span::styled(size_str, size_style),
+                ]))
             }
         })
         .collect();

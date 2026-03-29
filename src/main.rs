@@ -160,8 +160,11 @@ fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
                 app.cursor_col = app.puzzles[app.current_puzzle_index].cols - 1;
             }
             KeyCode::Char(' ') => {
-                app.toggle_fill();
+                app.fill_cell();
                 app.check_solved();
+            }
+            KeyCode::Char('e') | KeyCode::Char('E') => {
+                app.erase_cell();
             }
             KeyCode::Char('x') | KeyCode::Char('X') => {
                 app.stop_paint();
