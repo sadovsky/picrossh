@@ -52,7 +52,8 @@ cargo install --path . --bin picrossh
 | `G` | Jump to last row |
 | `0` | Jump to first column |
 | `$` | Jump to last column |
-| `Space` | Fill / unfill cell |
+| `Space` | Fill cell (hold + move to paint) |
+| `e` / `E` | Erase cell (hold + move to erase) |
 | `x` / `X` | Cross out cell |
 | `r` | Reset board |
 | `Esc` | Return to menu |
