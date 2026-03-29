@@ -70,94 +70,87 @@ fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
         },
         AppState::Playing => match key {
             KeyCode::Char('q') => app.state = AppState::Quit,
-            KeyCode::Esc => {
-                app.stop_paint();
-                app.state = AppState::Menu;
-            }
+            KeyCode::Esc => app.state = AppState::Menu,
             // Shift+arrows: move 5 cells (must come before plain arrows)
             KeyCode::Up if modifiers.contains(KeyModifiers::SHIFT) => {
-                app.move_and_paint(-5, 0);
+                app.move_and_apply(-5, 0);
                 app.check_solved();
             }
             KeyCode::Down if modifiers.contains(KeyModifiers::SHIFT) => {
-                app.move_and_paint(5, 0);
+                app.move_and_apply(5, 0);
                 app.check_solved();
             }
             KeyCode::Left if modifiers.contains(KeyModifiers::SHIFT) => {
-                app.move_and_paint(0, -5);
+                app.move_and_apply(0, -5);
                 app.check_solved();
             }
             KeyCode::Right if modifiers.contains(KeyModifiers::SHIFT) => {
-                app.move_and_paint(0, 5);
+                app.move_and_apply(0, 5);
                 app.check_solved();
             }
             // Plain arrows
             KeyCode::Up => {
-                app.move_and_paint(-1, 0);
+                app.move_and_apply(-1, 0);
                 app.check_solved();
             }
             KeyCode::Down => {
-                app.move_and_paint(1, 0);
+                app.move_and_apply(1, 0);
                 app.check_solved();
             }
             KeyCode::Left => {
-                app.move_and_paint(0, -1);
+                app.move_and_apply(0, -1);
                 app.check_solved();
             }
             KeyCode::Right => {
-                app.move_and_paint(0, 1);
+                app.move_and_apply(0, 1);
                 app.check_solved();
             }
             // Vim movement
             KeyCode::Char('h') => {
-                app.move_and_paint(0, -1);
+                app.move_and_apply(0, -1);
                 app.check_solved();
             }
             KeyCode::Char('j') => {
-                app.move_and_paint(1, 0);
+                app.move_and_apply(1, 0);
                 app.check_solved();
             }
             KeyCode::Char('k') => {
-                app.move_and_paint(-1, 0);
+                app.move_and_apply(-1, 0);
                 app.check_solved();
             }
             KeyCode::Char('l') => {
-                app.move_and_paint(0, 1);
+                app.move_and_apply(0, 1);
                 app.check_solved();
             }
             // Shift+hjkl: move 5 cells
             KeyCode::Char('H') => {
-                app.move_and_paint(0, -5);
+                app.move_and_apply(0, -5);
                 app.check_solved();
             }
             KeyCode::Char('J') => {
-                app.move_and_paint(5, 0);
+                app.move_and_apply(5, 0);
                 app.check_solved();
             }
             KeyCode::Char('K') => {
-                app.move_and_paint(-5, 0);
+                app.move_and_apply(-5, 0);
                 app.check_solved();
             }
             KeyCode::Char('L') => {
-                app.move_and_paint(0, 5);
+                app.move_and_apply(0, 5);
                 app.check_solved();
             }
-            // g/G: jump to top/bottom row (stops paint)
+            // g/G: jump to top/bottom row
             KeyCode::Char('g') => {
-                app.stop_paint();
                 app.cursor_row = 0;
             }
             KeyCode::Char('G') => {
-                app.stop_paint();
                 app.cursor_row = app.puzzles[app.current_puzzle_index].rows - 1;
             }
-            // 0/$: jump to start/end of row (stops paint)
+            // 0/$: jump to start/end of row
             KeyCode::Char('0') => {
-                app.stop_paint();
                 app.cursor_col = 0;
             }
             KeyCode::Char('$') => {
-                app.stop_paint();
                 app.cursor_col = app.puzzles[app.current_puzzle_index].cols - 1;
             }
             KeyCode::Char(' ') => {
@@ -168,11 +161,9 @@ fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
                 app.erase_cell();
             }
             KeyCode::Char('x') | KeyCode::Char('X') => {
-                app.stop_paint();
                 app.toggle_cross();
             }
             KeyCode::Char('r') => {
-                app.stop_paint();
                 app.reset_board();
             }
             _ => {}

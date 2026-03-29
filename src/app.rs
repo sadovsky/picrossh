@@ -31,10 +31,14 @@ pub struct App {
     pub menu_selection: usize,
     pub solved_puzzles: HashSet<usize>,
     pub menu_items: Vec<MenuItem>,
-    pub paint_mode: bool,
-    pub paint_value: CellState,
     pub best_times: HashMap<String, u64>, // puzzle name → best time in ms
+    // Timestamps for hold-to-paint: if last fill/cross was < HOLD_MS ago,
+    // moving will apply the same action to the new cell.
+    pub last_fill_time: Option<Instant>,
+    pub last_cross_time: Option<Instant>,
 }
+
+const HOLD_MS: u128 = 100;
 
 fn build_menu_items(puzzles: &[Puzzle]) -> Vec<MenuItem> {
     let mut items = vec![];
@@ -79,9 +83,9 @@ impl App {
             menu_selection: initial_selection,
             solved_puzzles,
             menu_items,
-            paint_mode: false,
-            paint_value: CellState::Empty,
             best_times,
+            last_fill_time: None,
+            last_cross_time: None,
         }
     }
 
@@ -93,44 +97,45 @@ impl App {
         self.cursor_col = 0;
         self.start_time = Some(Instant::now());
         self.elapsed = Duration::ZERO;
-        self.paint_mode = false;
+        self.last_fill_time = None;
+        self.last_cross_time = None;
         self.state = AppState::Playing;
     }
 
-    /// Space: if not painting, fills current cell and enters paint mode.
-    /// If already in paint mode, stops painting (acts as release).
+    /// Space: fill current cell. Records time for hold-to-fill.
     pub fn fill_cell(&mut self) {
-        if self.paint_mode {
-            self.paint_mode = false;
-        } else {
-            self.board[self.cursor_row][self.cursor_col] = CellState::Filled;
-            self.paint_value = CellState::Filled;
-            self.paint_mode = true;
-        }
+        self.board[self.cursor_row][self.cursor_col] = CellState::Filled;
+        self.last_fill_time = Some(Instant::now());
+        self.last_cross_time = None;
     }
 
-    /// 'e': always erases to Empty. Enters erase-paint mode.
+    /// 'e': erase current cell.
     pub fn erase_cell(&mut self) {
         self.board[self.cursor_row][self.cursor_col] = CellState::Empty;
-        self.paint_value = CellState::Empty;
-        self.paint_mode = true;
+        self.last_fill_time = None;
+        self.last_cross_time = None;
     }
 
-    pub fn stop_paint(&mut self) {
-        self.paint_mode = false;
-    }
-
-    /// Move cursor and, if in paint mode, apply paint to the new cell.
-    pub fn move_and_paint(&mut self, dr: i32, dc: i32) {
-        self.move_cursor(dr, dc);
-        if self.paint_mode {
-            self.board[self.cursor_row][self.cursor_col] = self.paint_value;
-        }
-    }
-
+    /// 'x': toggle cross on current cell. Records time for hold-to-cross.
     pub fn toggle_cross(&mut self) {
         let cell = &mut self.board[self.cursor_row][self.cursor_col];
         *cell = if *cell == CellState::Crossed { CellState::Empty } else { CellState::Crossed };
+        self.last_cross_time = Some(Instant::now());
+        self.last_fill_time = None;
+    }
+
+    /// Move cursor and apply fill/cross if the matching key is still held
+    /// (detected via key-repeat timing: last action < HOLD_MS ago).
+    pub fn move_and_apply(&mut self, dr: i32, dc: i32) {
+        self.move_cursor(dr, dc);
+        let now = Instant::now();
+        if self.last_fill_time.map_or(false, |t| now.duration_since(t).as_millis() < HOLD_MS) {
+            self.board[self.cursor_row][self.cursor_col] = CellState::Filled;
+            self.last_fill_time = Some(now);
+        } else if self.last_cross_time.map_or(false, |t| now.duration_since(t).as_millis() < HOLD_MS) {
+            self.board[self.cursor_row][self.cursor_col] = CellState::Crossed;
+            self.last_cross_time = Some(now);
+        }
     }
 
     pub fn move_cursor(&mut self, dr: i32, dc: i32) {

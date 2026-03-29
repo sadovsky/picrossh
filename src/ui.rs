@@ -246,11 +246,9 @@ fn render_playing(f: &mut Frame, app: &App) {
         );
     f.render_widget(header, chunks[0]);
 
-    let paint_indicator = if app.paint_mode { "  ✏ PAINT" } else { "" };
-    let footer_text = format!(
-        "Space=fill  x=cross  r=reset  hjkl/arrows=move  HJKL=×5  g/G=top/bot  0/$=row±  Esc=menu{}",
-        paint_indicator
-    );
+    let footer_text =
+        "Space=fill  e=erase  x=cross  r=reset  hjkl/arrows=move  HJKL=×5  g/G=top/bot  0/$=row±  Esc=menu"
+            .to_string();
     let footer = Paragraph::new(footer_text)
         .alignment(Alignment::Center)
         .style(Style::default().fg(Color::DarkGray));
