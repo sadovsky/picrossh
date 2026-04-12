@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::puzzle::{CellState, Puzzle};
+use crate::puzzle::{derive_clues, CellState, Puzzle};
 
 #[derive(PartialEq, Eq)]
 pub enum AppState {
@@ -37,6 +37,23 @@ impl App {
         }
     }
 
+    /// Start directly in Playing state with a single puzzle (no menu).
+    pub fn with_puzzle(puzzle: Puzzle) -> Self {
+        let mut app = App {
+            state: AppState::Menu,
+            puzzles: vec![puzzle],
+            current_puzzle_index: 0,
+            board: vec![],
+            cursor_row: 0,
+            cursor_col: 0,
+            start_time: None,
+            elapsed: Duration::ZERO,
+            menu_selection: 0,
+        };
+        app.load_puzzle(0);
+        app
+    }
+
     pub fn load_puzzle(&mut self, index: usize) {
         self.current_puzzle_index = index;
         let puzzle = &self.puzzles[index];
@@ -66,17 +83,26 @@ impl App {
             (self.cursor_col as i32 + dc).clamp(0, puzzle.cols as i32 - 1) as usize;
     }
 
+    /// Verify all row and column clues match the current board.
+    /// This supports any valid solution, not just the original one.
     pub fn check_solved(&mut self) {
         let puzzle = &self.puzzles[self.current_puzzle_index];
+
         for r in 0..puzzle.rows {
-            for c in 0..puzzle.cols {
-                let should_fill = puzzle.solution[r][c];
-                let is_filled = self.board[r][c] == CellState::Filled;
-                if should_fill != is_filled {
-                    return;
-                }
+            let row: Vec<bool> =
+                (0..puzzle.cols).map(|c| self.board[r][c] == CellState::Filled).collect();
+            if derive_clues(&row) != puzzle.row_clues[r] {
+                return;
             }
         }
+        for c in 0..puzzle.cols {
+            let col: Vec<bool> =
+                (0..puzzle.rows).map(|r| self.board[r][c] == CellState::Filled).collect();
+            if derive_clues(&col) != puzzle.col_clues[c] {
+                return;
+            }
+        }
+
         if let Some(start) = self.start_time {
             self.elapsed = start.elapsed();
         }
